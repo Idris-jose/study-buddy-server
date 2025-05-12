@@ -1,4 +1,0 @@
-pdfminer.six
-requests
-flask
-flask-cors
