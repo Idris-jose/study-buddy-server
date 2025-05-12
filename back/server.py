@@ -15,9 +15,12 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS to allow React frontend to communicate
-UPLOAD_FOLDER = '/tmp'  # Use /tmp for Vercel’s serverless environment
+# Allow requests from frontend domain and local dev
+CORS(app, resources={r"/*": {"origins": ["https://studdy-buddy-helper.vercel.app/", "http://localhost:3000"]}})
+UPLOAD_FOLDER = '/tmp'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# Rest of your server.py code remains unchanged...
 
 # Gemini API configuration
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')  # Remove VITE_ prefix
