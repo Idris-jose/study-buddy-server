@@ -15,15 +15,16 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 app = Flask(__name__)
-# Allow requests from frontend domain and local dev
-CORS(app, resources={r"/*": {"origins": ["https://studdy-buddy-helper.vercel.app/", "http://localhost:3000"]}})
-UPLOAD_FOLDER = '/tmp'
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
-# Rest of your server.py code remains unchanged...
+app.config['UPLOAD_FOLDER'] = './uploads'  # Define upload folder
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+CORS(app, resources={
+    r"/upload": {"origins": "http://localhost:5174"},
+    r"/generate-notes": {"origins": "http://localhost:5174"}
+})
 
 # Gemini API configuration
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')  # Remove VITE_ prefix
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+logger.info(f"GEMINI_API_KEY: {GEMINI_API_KEY}")
 GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent'
 
 def process_pdf(file):
@@ -34,7 +35,6 @@ def process_pdf(file):
     if not file.filename.endswith('.pdf'):
         return None, jsonify({'error': 'Invalid file format, only PDFs allowed'}), 400
     
-    # Limit file size to 5MB to avoid Vercel payload issues
     if request.content_length and request.content_length > 5 * 1024 * 1024:
         return None, jsonify({'error': 'File too large, max 5MB'}), 400
 
@@ -43,11 +43,11 @@ def process_pdf(file):
     
     try:
         file.save(file_path)
-        # Extract text from PDF
         text = extract_text(file_path)
         if not text.strip():
             return None, jsonify({'error': 'No text could be extracted from the PDF'}), 400
-        return text, None
+        logger.info(f"Extracted PDF text: {text}")
+        return text, None, None
     except Exception as e:
         logger.error(f"PDF processing error: {str(e)}")
         return None, jsonify({'error': f'PDF processing failed: {str(e)}'}), 500
@@ -75,7 +75,7 @@ def call_gemini_api(prompt):
             f'{GEMINI_API_URL}?key={GEMINI_API_KEY}',
             json=payload,
             headers=headers,
-            timeout=8  # Avoid Vercel timeout
+            timeout=30  # Increased timeout from 8 to 30 seconds
         )
         
         if response.status_code != 200:
@@ -84,7 +84,6 @@ def call_gemini_api(prompt):
             return None, jsonify({'error': error_data.get('message', 'Gemini API request failed')}), 500
         
         data = response.json()
-        # Safely access nested keys
         candidates = data.get('candidates', [])
         if not candidates:
             logger.error("No candidates in Gemini API response")
@@ -100,12 +99,27 @@ def call_gemini_api(prompt):
             logger.error("No text in Gemini API response")
             return None, jsonify({'error': 'No content returned from Gemini API'}), 500
         
+        logger.info(f"Raw Gemini API text: {text}")
         try:
             result = json.loads(text)
+            logger.info(f"Parsed Gemini API result: {result}")
             if not result or not isinstance(result, dict):
-                logger.error("Invalid JSON format from Gemini API")
+                logger.error("Invalid JSON format from Gemini API: not a dictionary")
                 return None, jsonify({'error': 'Invalid response format from Gemini API'}), 500
-            return result, None
+            
+            # Check response format based on endpoint
+            if 'notes' in result:
+                # For generate-notes endpoint
+                return result, None, None
+            else:
+                # For upload endpoint (solutions)
+                if not all(
+                    isinstance(value, dict) and "question" in value and "solution" in value
+                    for value in result.values()
+                ):
+                    logger.error("Invalid solution format: missing required fields")
+                    return None, jsonify({'error': 'Gemini API returned invalid solution format'}), 500
+                return result, None, None
         except json.JSONDecodeError as e:
             logger.error(f"JSON decode error: {str(e)}")
             return None, jsonify({'error': f'Invalid JSON format from Gemini API: {str(e)}'}), 500
@@ -120,35 +134,41 @@ def upload_pdf():
         return jsonify({'error': 'No file uploaded'}), 400
     
     file = request.files['file']
-    text, error_response = process_pdf(file)
+    text, error_response, status_code = process_pdf(file)
     if error_response:
-        return error_response
+        return error_response, status_code if status_code else 500
 
-    # Prepare prompt for solving questions
+    # Add chunk handling for large text
+    if len(text) > 8000:
+        logger.info(f"Text is large ({len(text)} chars), summarizing before sending to API")
+        text = text[:8000] + "... (text truncated for API consumption)"
+        
     prompt = f"""
-        You are an expert tutor with a strong background in mathematics and problem-solving. The following text contains questions from a test or questionnaire (TQ). Analyze the text, identify the questions, and provide clear, concise, and accurate solutions for each question. Pay special attention to mathematical problems, ensuring that all calculations are correct and explanations are thorough. Format the response as a JSON object where each key is a question number or identifier (e.g., "Q1", "Q2") and the value is an object with "question" (the question text) and "solution" (the answer or explanation). If the questions are not clearly numbered, infer the structure and assign identifiers. If the text is unclear, provide your best interpretation.
+        You are an expert tutor with a strong background in mathematics and problem-solving. The following text contains questions from a test or questionnaire (TQ). Analyze the text, identify the questions, and provide clear, concise, and accurate solutions for each question. Pay special attention to mathematical problems, ensuring that all calculations are correct and explanations are thorough.
 
-        For mathematical problems, include step-by-step solutions where applicable, and ensure that the final answer is clearly stated.
+        Format the response as a JSON object where each key is a question number or identifier (e.g., "Q1", "Q2") and the value is an object with "question" (the question text) and "solution" (the answer or explanation). Do not wrap the JSON in any additional structures, arrays, or text. If the questions are not clearly numbered, infer the structure and assign identifiers like "Q1", "Q2", etc. If the text is unclear, provide your best interpretation.
 
-        For best results, expect the text to be structured like:
+        For mathematical problems, include step-by-step solutions where applicable, and ensure the final answer is clearly stated.
+
+        Example input:
         Q1: What is 2 + 2?
         Q2: Solve for x: 2x + 3 = 7.
-        Or similar clear formats.
+
+        Expected output:
+        {{
+          "Q1": {{ "question": "What is 2 + 2?", "solution": "2 + 2 = 4" }},
+          "Q2": {{ "question": "Solve for x: 2x + 3 = 7", "solution": "2x + 3 = 7\\n2x = 4\\nx = 2" }}
+        }}
 
         Text from file:
         {text}
 
-        Return the response in the following format:
-        {{
-          "Q1": {{ "question": "Question text", "solution": "Solution text" }},
-          "Q2": {{ "question": "Question text", "solution": "Solution text" }},
-          ...
-        }}
+        Return only the JSON object, without any additional text, markdown, or wrapping.
     """
 
-    result, error_response = call_gemini_api(prompt)
+    result, error_response, status_code = call_gemini_api(prompt)
     if error_response:
-        return error_response
+        return error_response, status_code if status_code else 500
     
     return jsonify({'solutions': result})
 
@@ -159,11 +179,10 @@ def generate_notes():
         return jsonify({'error': 'No file uploaded'}), 400
     
     file = request.files['file']
-    text, error_response = process_pdf(file)
+    text, error_response, status_code = process_pdf(file)
     if error_response:
-        return error_response
+        return error_response, status_code if status_code else 500
 
-    # Prepare prompt for generating notes
     prompt = f"""
         You are an expert educator skilled in creating comprehensive study materials. The following text is extracted from a PDF document. Analyze the text and generate extensive, well-structured notes that summarize and explain the key concepts, ideas, and details in the document. If the text includes questions, pick the topics from the questions and generate a note with it instead of answering the question. The notes should be clear, concise, and suitable for university-level study, organized with headings, bullet points, or numbered lists as appropriate. Focus on clarity, educational value, and retaining all critical information. If the text is unclear or ambiguous, make reasonable interpretations and note any assumptions made.
 
@@ -177,12 +196,11 @@ def generate_notes():
         }}
     """
 
-    result, error_response = call_gemini_api(prompt)
+    result, error_response, status_code = call_gemini_api(prompt)
     if error_response:
-        return error_response
+        return error_response, status_code if status_code else 500
     
     return jsonify(result)
 
-# Note: app.run() is ignored by Vercel; use gunicorn instead
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
