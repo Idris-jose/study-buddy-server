@@ -35,6 +35,10 @@ CORS(app, resources={
     }
 })
 
+@app.route('/ping')
+def ping():
+    return jsonify({"message": "Server is alive"}), 200
+
 
 # Gemini API configuration
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
