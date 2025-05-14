@@ -15,12 +15,26 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 app = Flask(__name__)
+import os
+
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 5000))  # default to 5000 locally
+    app.run(host='0.0.0.0', port=port, debug=True)
+    # Set the port to 5000 for local development
+    
 app.config['UPLOAD_FOLDER'] = './uploads'  # Define upload folder
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+
 CORS(app, resources={
-    r"/upload": {"origins": "http://localhost:5174"},
-    r"/generate-notes": {"origins": "http://localhost:5174"}
+    r"/*": {
+        "origins": [
+            "http://localhost:5174",                    # for local dev
+            "https://studdy-buddy-helper.vercel.app"          # Vercel domain
+        ]
+    }
 })
+
 
 # Gemini API configuration
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
