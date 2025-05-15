@@ -36,6 +36,13 @@ CORS(app, resources={
     }
 })
 
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', 'https://studdy-buddy-helper.vercel.app')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+    return response
+
 @app.route('/ping')
 def ping():
     return jsonify({"message": "Server is alive"}), 200
