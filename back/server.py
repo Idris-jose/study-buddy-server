@@ -54,6 +54,26 @@ def options_handler(path):
     response.headers.add('Access-Control-Max-Age', '86400')  # Cache preflight response for 24 hours
     return response
 
+app.route('/test-cors', methods=['GET', 'POST'])
+def test_cors():
+    method = request.method
+    headers = dict(request.headers)
+    data = {}
+    
+    if request.method == 'POST':
+        if request.is_json:
+            data = request.get_json()
+        elif request.form:
+            data = dict(request.form)
+        # Add file handling if needed
+    
+    return jsonify({
+        "message": "CORS test successful",
+        "method": method,
+        "headers": headers,
+        "data": data
+    })
+
 @app.route('/ping')
 def ping():
     return jsonify({"message": "Server is alive"}), 200
