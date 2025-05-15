@@ -30,7 +30,8 @@ CORS(app, resources={
     r"/*": {
         "origins": [
             "http://localhost:5174",                    # for local dev
-            "https://studdy-buddy-helper.vercel.app"          # Vercel domain
+            "https://studdy-buddy-helper.vercel.app",   # Vercel domain
+            "*"                                         # Allow all origins for testing
         ]
     }
 })
