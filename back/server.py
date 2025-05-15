@@ -29,6 +29,9 @@ if __name__ == '__main__':
 app.config['UPLOAD_FOLDER'] = './uploads'  # Define upload folder
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
+@app.route('/')
+def home():
+    return "Study Buddy Server is running!", 200
 
 @app.route('/ping')
 def ping():
