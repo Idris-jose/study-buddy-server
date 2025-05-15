@@ -26,21 +26,32 @@ app.config['UPLOAD_FOLDER'] = './uploads'  # Define upload folder
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 
-CORS(app, resources={
-    r"/*": {
-        "origins": [
-            "http://localhost:5174",                    # for local dev
-            "https://studdy-buddy-helper.vercel.app",   # Vercel domain
-            "*"                                         # Allow all origins for testing
-        ]
-    }
-})
+# 1. Basic CORS setup - Allow all origins during testing
+CORS(app, 
+     resources={r"/*": {"origins": "*"}},  # Allow all origins temporarily
+     supports_credentials=True,
+     methods=["GET", "POST", "OPTIONS", "PUT", "DELETE"],
+     allow_headers=["Content-Type", "Authorization", "X-Requested-With"])
 
+# 2. Global CORS handler for additional headers and preflight requests
 @app.after_request
-def after_request(response):
-    response.headers.add('Access-Control-Allow-Origin', 'https://studdy-buddy-helper.vercel.app')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+def add_cors_headers(response):
+    response.headers.add('Access-Control-Allow-Origin', '*')  # Allow all origins temporarily
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    response.headers.add('Access-Control-Allow-Credentials', 'true')
+    return response
+
+# 3. Explicit OPTIONS route handler for all routes
+@app.route('/', defaults={'path': ''}, methods=['OPTIONS'])
+@app.route('/<path:path>', methods=['OPTIONS'])
+def options_handler(path):
+    response = make_response()
+    response.headers.add('Access-Control-Allow-Origin', '*')  # Allow all origins temporarily
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    response.headers.add('Access-Control-Allow-Credentials', 'true')
+    response.headers.add('Access-Control-Max-Age', '86400')  # Cache preflight response for 24 hours
     return response
 
 @app.route('/ping')
