@@ -25,54 +25,13 @@ if __name__ == '__main__':
 app.config['UPLOAD_FOLDER'] = './uploads'  # Define upload folder
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-
-# 1. Basic CORS setup - Allow all origins during testing
-CORS(app, 
-     resources={r"/*": {"origins": "*"}},  # Allow all origins temporarily
-     supports_credentials=True,
-     methods=["GET", "POST", "OPTIONS", "PUT", "DELETE"],
-     allow_headers=["Content-Type", "Authorization", "X-Requested-With"])
-
-# 2. Global CORS handler for additional headers and preflight requests
-@app.after_request
-def add_cors_headers(response):
-    response.headers.add('Access-Control-Allow-Origin', '*')  # Allow all origins temporarily
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
-    response.headers.add('Access-Control-Allow-Credentials', 'true')
-    return response
-
-# 3. Explicit OPTIONS route handler for all routes
-@app.route('/', defaults={'path': ''}, methods=['OPTIONS'])
-@app.route('/<path:path>', methods=['OPTIONS'])
-def options_handler(path):
-    response = make_response()
-    response.headers.add('Access-Control-Allow-Origin', '*')  # Allow all origins temporarily
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
-    response.headers.add('Access-Control-Allow-Credentials', 'true')
-    response.headers.add('Access-Control-Max-Age', '86400')  # Cache preflight response for 24 hours
-    return response
-
-app.route('/test-cors', methods=['GET', 'POST'])
-def test_cors():
-    method = request.method
-    headers = dict(request.headers)
-    data = {}
-    
-    if request.method == 'POST':
-        if request.is_json:
-            data = request.get_json()
-        elif request.form:
-            data = dict(request.form)
-        # Add file handling if needed
-    
-    return jsonify({
-        "message": "CORS test successful",
-        "method": method,
-        "headers": headers,
-        "data": data
-    })
+CORS(app, resources={
+    r"/*": {
+        "origins": "*",  # For production, replace with specific domains
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"]
+    }
+})
 
 @app.route('/ping')
 def ping():
