@@ -8,6 +8,9 @@ from flask_cors import CORS
 import json
 from dotenv import load_dotenv
 
+
+
+
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -15,6 +18,7 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 app = Flask(__name__)
+CORS(app)
 import os
 
 if __name__ == '__main__':
@@ -25,13 +29,6 @@ if __name__ == '__main__':
 app.config['UPLOAD_FOLDER'] = './uploads'  # Define upload folder
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-CORS(app, resources={
-    r"/*": {
-        "origins": "*",  # For production, replace with specific domains
-        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization"]
-    }
-})
 
 @app.route('/ping')
 def ping():
